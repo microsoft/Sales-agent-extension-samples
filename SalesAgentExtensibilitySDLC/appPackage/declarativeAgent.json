@@ -1,0 +1,24 @@
+{
+    "$schema": "https://developer.microsoft.com/json-schemas/copilot/declarative-agent/v1.6/schema.json",
+    "version": "v1.6",
+    "id": "saleschat",
+    "name": "Sales Agent Preview${{APP_NAME_SUFFIX}}",
+    "description": "NON-PRODUCTION preview build of the Sales agent for extensibility SDLC testing (${{TEAMSFX_ENV}} environment). Use this isolated copy to add and validate your own external tools, actions, and knowledge with the Microsoft 365 Agents Toolkit before promoting the same extensions to the production Sales agent. Not for production use or real customer data.",
+    "instructions": "$[file('instruction.txt')]",
+    "capabilities": [
+        {
+            "name": "CodeInterpreter"
+        }
+    ],
+    "behavior_overrides": {
+        "x-custom_experience": {
+            "name": "SalesChat"
+        }
+    },
+    "x-agent_runtime_id": {
+        "id": "SalesAgent"
+    },
+    "disclaimer": {
+        "text": "⚠ TEST / NON-PRODUCTION AGENT (${{TEAMSFX_ENV}}). This is a preview build for extensibility SDLC validation only. Do NOT use it in production or with real customer data."
+    }
+}
