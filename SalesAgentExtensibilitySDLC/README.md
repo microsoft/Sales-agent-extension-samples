@@ -8,9 +8,9 @@ A **parameterized, non-production** Microsoft 365 declarative-agent template tha
 
 ## Walkthrough video
 
-https://github.com/microsoft/Sales-agent-extension-samples/raw/users/brijshah/Sales-Agent-Extensibility-Template/SalesAgentExtensibilitySDLC/docs/Sales-Agent-SDLC-Guide.mp4
+<video src="https://github.com/microsoft/Sales-agent-extension-samples/raw/users/brijshah/Sales-Agent-Extensibility-Template/SalesAgentExtensibilitySDLC/docs/Sales-Agent-SDLC-Guide.mp4" controls width="960" height="540"></video>
 
-> If the player doesn't load, download or open [docs/Sales-Agent-SDLC-Guide.mp4](docs/Sales-Agent-SDLC-Guide.mp4) directly.
+> If the player doesn't load, download or open [docs/Sales Agent SDLC Guide.mp4](docs/Sales%20Agent%20SDLC%20Guide.mp4) directly.
 
 ---
 
