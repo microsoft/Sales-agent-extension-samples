@@ -1,0 +1,39 @@
+{
+    "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.22/MicrosoftTeams.schema.json",
+    "manifestVersion": "1.22",
+    "version": "1.0.0",
+    "id": "${{TEAMS_APP_ID}}",
+    "developer": {
+        "name": "My App, Inc.",
+        "websiteUrl": "https://www.example.com",
+        "privacyUrl": "https://www.example.com/privacy",
+        "termsOfUseUrl": "https://www.example.com/termofuse"
+    },
+    "icons": {
+        "color": "color.png",
+        "outline": "outline.png"
+    },
+    "name": {
+        "short": "Sales Agent Preview${{APP_NAME_SUFFIX}}",
+        "full": "Sales Agent Preview (Non-Production)${{APP_NAME_SUFFIX}}"
+    },
+        "description": {
+        "short": "Non-prod Sales agent preview for extensibility testing. Not for production.",
+        "full": "**NON-PRODUCTION — TEST ONLY. Do not use in production or with real customer data.**\n\nThis is an isolated PREVIEW build of the Sales agent used to develop and validate extensibility (custom tools, actions, and knowledge) through a proper software development lifecycle (Dev → UAT → SIT) before the same extensions are applied to the production Sales agent.\n\n- **Environment:** ${{TEAMSFX_ENV}}\n\n**What you do with this package:**\n- Extend this agent with your own external tools (API plugins / MCP / connected agents) and knowledge using the Microsoft 365 Agents Toolkit.\n- Point those tools at the matching non-production Dynamics environment using the `env/.env.*` variables.\n- Sideload to an individual user or publish to your test tenant to validate the integration in isolation, without touching the production Sales agent.\n\nManage per-environment values (Dynamics environment ID, endpoints, client IDs) in the `env/.env.<environment>` files so the same template can produce a separate agent for each stage of your lifecycle."
+    },
+    "accentColor": "#FFFFFF",
+    "composeExtensions": [],
+    "permissions": [
+        "identity",
+        "messageTeamMembers"
+    ],
+    "copilotAgents": {
+        "declarativeAgents": [            
+            {
+                "id": "saleschat",
+                "file": "declarativeAgent.json"
+            }
+        ]
+    },
+    "validDomains": []
+}
