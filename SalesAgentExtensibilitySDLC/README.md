@@ -6,6 +6,14 @@ A **parameterized, non-production** Microsoft 365 declarative-agent template tha
 
 ---
 
+## Walkthrough video
+
+<video src="docs/Sales%20Agent%20SDLC%20Guide.mp4" controls width="960" height="540"></video>
+
+> If the player doesn't load, download or open [docs/Sales Agent SDLC Guide.mp4](docs/Sales%20Agent%20SDLC%20Guide.mp4) directly.
+
+---
+
 ## Why this template exists
 
 The production Sales agent is **tenant-scoped** with a **single slot** and a **single overlay**, and overlays have **no precedence/priority** — so you cannot safely stage or "canary" changes on the live agent (users in overlapping groups get merged/undefined results). This template gives you an **isolated agent identity per environment** so each stage of your lifecycle is a separate, clearly-labelled, non-prod agent you can test in isolation.
