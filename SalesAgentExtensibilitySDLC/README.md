@@ -17,6 +17,17 @@ A **parameterized, non-production** Microsoft 365 declarative-agent template tha
 - [Supported extensibility — test ONLY what production accepts](#supported-extensibility--test-only-what-production-accepts)
 - [What's in the package](#whats-in-the-package)
   - [The templatized tokens](#the-templatized-tokens)
+- [Update an existing agent instead of creating a new one](#update-an-existing-agent-instead-of-creating-a-new-one)
+  - [Step 1 — Get the latest env file](#step-1--get-the-latest-env-file)
+  - [Step 2 — Recover the IDs when the env file is blank](#step-2--recover-the-ids-when-the-env-file-is-blank)
+  - [Step 3 — Sign in to the same tenant](#step-3--sign-in-to-the-same-tenant)
+  - [Step 4 — Make sure you're allowed to update the app](#step-4--make-sure-youre-allowed-to-update-the-app)
+  - [Step 5 — Fill in the env file and commit it](#step-5--fill-in-the-env-file-and-commit-it)
+  - [Step 6 — Bump the version](#step-6--bump-the-version)
+  - [Step 7 — Provision and publish](#step-7--provision-and-publish)
+  - [Step 8 — Verify you updated rather than duplicated](#step-8--verify-you-updated-rather-than-duplicated)
+  - [Pre-flight checklist](#pre-flight-checklist)
+  - [If you're the first person to deploy a stage](#if-youre-the-first-person-to-deploy-a-stage)
 - [Quick start](#quick-start)
   - [1. Manage your environments with `env/.env.*`](#1-manage-your-environments-with-envenv)
     - [Enabling the Dynamics/tool variables](#enabling-the-dynamicstool-variables)
@@ -151,7 +162,144 @@ These `${{TOKEN}}` values are substituted from the active `env/.env.<env>` file 
 
 ---
 
+## Update an existing agent instead of creating a new one
+
+Use this when **someone else has already deployed a stage** (dev/uat/sit) and you're touching it for the first time — a new team member, a second developer, a new laptop, or a CI pipeline. Follow these steps and your deploy **updates** the existing agent; skip them and ATK creates a duplicate.
+
+> **The one rule:** `manifest.json` sets `"id": "${{TEAMS_APP_ID}}"`. `teamsApp/create` reuses the existing agent **only** when `TEAMS_APP_ID` already holds an app ID that exists **in the tenant you're signed in to**. Empty ID, or an ID from a different tenant → new app, duplicate agent.
+
+### Step 1 — Get the latest env file
+
+```bash
+git pull
+cat env/.env.dev          # PowerShell: Get-Content env\.env.dev
+```
+
+Look at `TEAMS_APP_ID`:
+
+| What you see | What it means | Go to |
+| --- | --- | --- |
+| `TEAMS_APP_ID=6f1a…` (a GUID) | The previous deployer committed the identity. **Nothing to recover.** | [Step 3](#step-3--sign-in-to-the-same-tenant) |
+| `TEAMS_APP_ID=` (blank) | The identity was never committed. **You must recover it**, or you'll create a duplicate. | [Step 2](#step-2--recover-the-ids-when-the-env-file-is-blank) |
+
+### Step 2 — Recover the IDs when the env file is blank
+
+Pick whichever source you can reach fastest.
+
+**Option A — Ask the person who deployed it (fastest and most reliable).**
+Their working copy still has the values ATK wrote back. Ask them to run this in the repo and send you the output:
+
+```bash
+git diff env/.env.dev        # shows the values ATK wrote but never committed
+```
+
+Better still, ask them to just commit it: `git add env/.env.dev && git commit -m "Pin dev agent identity" && git push`. Then re-run Step 1.
+
+**Option B — Read it from the Developer Portal.**
+
+1. Go to the [Developer Portal](https://dev.teams.microsoft.com/apps) and sign in with an account **in the same tenant** the agent was deployed to.
+2. Select **Apps** and find the agent by name — `Sales Agent Preview(Dev)` / `(UAT)` / `(SIT)`. The `APP_NAME_SUFFIX` in each env file tells you which name maps to which stage.
+3. Open it. **Overview → Dashboard → Basic information** shows the **App ID** and the **Version**. (**Configure → Basic information** shows the same fields and lets you edit them.)
+4. Copy the **App ID** → that is `TEAMS_APP_ID`.
+5. Note the **Version** → that is your current `AGENT_VERSION`.
+
+> If several similarly-named apps are listed, you're already looking at the duplicates. Pick the one that is actually installed/published — check **Publish to org** status or the newest **Version** — and clean up the rest afterwards.
+
+**Option C — Get the M365 title values (optional).**
+`M365_TITLE_ID`, `M365_APP_ID`, and `SHARE_LINK` are convenience outputs; provision regenerates them. If you want them up front, ask the original deployer for their env file, or resolve them from the app ID:
+
+```bash
+atk launchinfo --manifest-id <TEAMS_APP_ID>
+```
+
+### Step 3 — Sign in to the same tenant
+
+The app ID only resolves inside the tenant it was created in. A valid ID + the wrong tenant still produces a duplicate.
+
+- **VS Code:** Agents Toolkit → **ACCOUNTS** → confirm the signed-in M365 account. If several accounts are listed, sign out of the wrong ones — provision and publish must both use the target tenant.
+- **CLI:** `atk auth --help` to list the account commands, then sign in with the correct M365 account.
+
+### Step 4 — Make sure you're allowed to update the app
+
+An app in the Developer Portal has **owners**. If you aren't one, your provision can fail or silently push you toward creating your own copy.
+
+- The original deployer can add you in VS Code: Agents Toolkit → **ENVIRONMENT** → **Manage Collaborators** → **Add App Owners**, then enter your M365 account email.
+- Or in the [Developer Portal](https://dev.teams.microsoft.com/apps): open the app → **Advanced** → **Owners** → **Add owners** → pick your user → **Role** = **Administrator** (can add/remove owners and delete) or **Operative** (can update configuration) → **Add**.
+- If the app has **no active owners** left (for example, the original deployer left the org), a tenant admin can claim it by entering the app ID in the Developer Portal.
+
+### Step 5 — Fill in the env file and commit it
+
+Put the recovered values into the committed `env/.env.<env>` file — **not** `env/.env.<env>.user`, which is gitignored and only for `SECRET_*` values.
+
+```dotenv
+# env/.env.dev
+TEAMS_APP_ID=6f1a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8   # from Step 2 — the agent's identity, never changes
+AGENT_VERSION=1.2.0                                  # current version from the portal, bumped by one
+M365_TITLE_ID=                                       # optional — provision fills these in
+M365_APP_ID=
+SHARE_LINK=
+```
+
+Then commit it so the next person doesn't repeat this recovery:
+
+```bash
+git add env/.env.dev
+git commit -m "Pin dev agent identity (TEAMS_APP_ID)"
+git push
+```
+
+### Step 6 — Bump the version
+
+Set `AGENT_VERSION` **higher than the version currently shown in the Developer Portal**. An equal or lower version means the update isn't picked up as a new revision.
+
+| Portal shows | Set `AGENT_VERSION` to |
+| --- | --- |
+| `1.0.0` | `1.0.1` (fix) or `1.1.0` (new tool/knowledge) |
+| `1.2.0` | `1.2.1` / `1.3.0` |
+
+`TEAMS_APP_ID` stays **exactly** as it is. Version = which revision; app ID = which agent.
+
+### Step 7 — Provision and publish
+
+```bash
+atk provision --env dev
+atk publish --env dev
+```
+
+Or in VS Code: pick the env, then **LIFECYCLE → Provision**, then **Publish to Organization**. Always in that order.
+
+### Step 8 — Verify you updated rather than duplicated
+
+1. Open the [Developer Portal](https://dev.teams.microsoft.com/apps) → **Apps**. There should still be **exactly one** `Sales Agent Preview(<ENV>)` — no new entry.
+2. Open it → **Overview → Basic information**. The **App ID** must match the `TEAMS_APP_ID` in your env file, and the **Version** must be the `AGENT_VERSION` you just set.
+3. Check `git diff env/.env.dev`. If `TEAMS_APP_ID` changed, ATK created a new app — stop, restore the original ID, and clean up the extra app.
+
+### Pre-flight checklist
+
+Run through this before every provision on a shared stage:
+
+- [ ] `git pull` done — you have the latest env file.
+- [ ] `TEAMS_APP_ID` is **non-empty** in `env/.env.<env>`.
+- [ ] The signed-in M365 account is in the **same tenant** the agent lives in.
+- [ ] You're an **owner** of the app in the Developer Portal.
+- [ ] `AGENT_VERSION` is higher than the version in the portal.
+- [ ] After provision: `git diff` shows `TEAMS_APP_ID` **unchanged**, and any newly written IDs are committed.
+
+### If you're the first person to deploy a stage
+
+There's nothing to recover — but you own the handoff:
+
+1. Leave `TEAMS_APP_ID=` blank and run `atk provision --env <env>`. ATK creates the app and writes the ID into `env/.env.<env>`.
+2. **Commit `env/.env.<env>` immediately** — including `TEAMS_APP_ID`, `M365_TITLE_ID`, `M365_APP_ID`, and `SHARE_LINK`.
+3. Add your teammates as app owners (Step 4) so they can update it.
+
+Everyone after you then lands in the easy path at Step 1. Skipping step 2 is the single most common cause of [duplicate agents](#duplicate-agents-in-the-tenant-after-every-deploy).
+
+---
+
 ## Quick start
+
+> 👥 **Not the first person on this project?** If a teammate has already deployed the stage you're targeting, do [Update an existing agent instead of creating a new one](#update-an-existing-agent-instead-of-creating-a-new-one) **before** you run Provision — otherwise you'll create a duplicate agent in the tenant.
 
 ### 1. Manage your environments with `env/.env.*`
 
@@ -276,6 +424,8 @@ So `teamsApp/create` only *reuses* the agent when `TEAMS_APP_ID` already holds a
 Note that bumping the version is not itself the cause — it's just when you notice. The version (`AGENT_VERSION`) is a property of the app; `TEAMS_APP_ID` is *which* app.
 
 **Fix:**
+
+> Joining a stage someone else already deployed? Follow [Update an existing agent instead of creating a new one](#update-an-existing-agent-instead-of-creating-a-new-one) for the full step-by-step recovery.
 
 1. Pick the one agent you want to keep for the stage. Get its **App ID** from the [Developer Portal](https://dev.teams.microsoft.com/apps) (or from the working copy where provision last succeeded).
 2. Write it into the committed env file and **commit it**:
