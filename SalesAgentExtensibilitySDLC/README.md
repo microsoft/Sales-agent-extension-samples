@@ -6,6 +6,37 @@ A **parameterized, non-production** Microsoft 365 declarative-agent template tha
 
 ---
 
+## Contents
+
+- [Walkthrough video](#walkthrough-video)
+- [Why this template exists](#why-this-template-exists)
+- [Prerequisites](#prerequisites)
+- [Install the Microsoft 365 Agents Toolkit (ATK)](#install-the-microsoft-365-agents-toolkit-atk)
+  - [Option A — VS Code extension (recommended)](#option-a--vs-code-extension-recommended)
+  - [Option B — ATK CLI (for pipelines / headless)](#option-b--atk-cli-for-pipelines--headless)
+- [Supported extensibility — test ONLY what production accepts](#supported-extensibility--test-only-what-production-accepts)
+- [What's in the package](#whats-in-the-package)
+  - [The templatized tokens](#the-templatized-tokens)
+- [Quick start](#quick-start)
+  - [1. Manage your environments with `env/.env.*`](#1-manage-your-environments-with-envenv)
+    - [Enabling the Dynamics/tool variables](#enabling-the-dynamicstool-variables)
+  - [2. Add your external tools with ATK](#2-add-your-external-tools-with-atk)
+  - [3. Provision / build for a specific environment](#3-provision--build-for-a-specific-environment)
+  - [4. Test the extension — sideload or publish](#4-test-the-extension--sideload-or-publish)
+  - [4b. Ship a new version of the same agent](#4b-ship-a-new-version-of-the-same-agent)
+  - [5. Promote](#5-promote)
+- [Evaluating the agent (optional)](#evaluating-the-agent-optional)
+- [Guardrails](#guardrails)
+- [Troubleshooting](#troubleshooting)
+  - [Duplicate agents in the tenant after every deploy](#duplicate-agents-in-the-tenant-after-every-deploy)
+  - [`TeamsAppNotExists` when publishing](#teamsappnotexists--app-with-id--does-not-exist-in-developer-portal-when-publishing)
+  - [Warning: "Short name contains Beta environment keywords"](#warning-short-name-contains-beta-environment-keywords-stagstagingpreview)
+  - [`manifest.MissingEnvironmentVariablesError` during packaging](#manifestmissingenvironmentvariableserror-during-packaging)
+  - [Wrong tenant / agent not showing up](#wrong-tenant--agent-not-showing-up)
+- [References](#references)
+
+---
+
 ## Walkthrough video
 
 <video src="https://github.com/microsoft/Sales-agent-extension-samples/raw/users/brijshah/Sales-Agent-Extensibility-Template/SalesAgentExtensibilitySDLC/docs/Sales-Agent-SDLC-Guide.mp4" controls width="960" height="540"></video>
@@ -92,7 +123,7 @@ The production Sales agent is extended from the **Custom tools & knowledge** tab
 | `appPackage/declarativeAgent.json` | The declarative agent definition (name, description, capabilities, **non-prod disclaimer**). |
 | `appPackage/instruction.txt` | Agent instructions (unchanged base Sales behavior). |
 | `appPackage/color.png`, `outline.png` | Icons. |
-| `env/.env.local` `.env.dev` `.env.uat` `.env.sit` | **One file per environment.** Holds the name suffix and Dynamics/tool values for that stage. |
+| `env/.env.local` `.env.dev` `.env.uat` `.env.sit` | **One file per environment.** Holds the agent identity (`TEAMS_APP_ID`), version, name suffix, and Dynamics/tool values for that stage. `.env.dev/.uat/.sit` are **committed on purpose** — see [Duplicate agents](#duplicate-agents-in-the-tenant-after-every-deploy). |
 | `m365agents.yml`, `m365agents.local.yml` | ATK lifecycle (provision / publish) definitions. |
 
 ### The templatized tokens
@@ -103,7 +134,8 @@ These `${{TOKEN}}` values are substituted from the active `env/.env.<env>` file 
 | --- | --- | --- |
 | `APP_NAME_SUFFIX` | env file | Suffix appended to the agent name, e.g. ` (Dev)`, ` (UAT)`, ` (SIT)`. Keep it short (Teams `name.short` ≤ 30 chars). |
 | `TEAMSFX_ENV` | env file | The environment key (`dev`/`uat`/`sit`/`local`). |
-| `TEAMS_APP_ID` | generated | Written back by ATK during provision. |
+| `AGENT_VERSION` | env file | The app package version (`manifest.json` → `version`). **Bump this** to ship a new version of the same agent. |
+| `TEAMS_APP_ID` | env file (written back by provision) | **The agent's identity in the tenant.** Provision writes it back into `env/.env.<env>` — **commit it**. See [Duplicate agents](#duplicate-agents-in-the-tenant-after-every-deploy). |
 
 **Optional (opt-in) variables — commented out by default** in each `env/.env.*` file. The base agent does **not** reference them, so packaging works out of the box. Enable them only when *your tools* need them (see [Enabling the Dynamics/tool variables](#enabling-the-dynamicstool-variables)):
 
@@ -178,7 +210,19 @@ Or in VS Code: pick the environment, then **Provision**. The built package lands
 - **Sideload to an individual user (fastest inner loop):** upload `appPackage/build/appPackage.<env>.zip` via Copilot/Teams **Upload a custom app**. Only that user gets the preview agent — ideal for a developer validating a tool without any admin or overlay step. (Requires custom-app upload to be enabled.)
 - **Publish to your test tenant (shared testing):** run **Provision** first, then the publish flow (`atk publish --env <env>` or **Publish to Organization** in VS Code). An admin approves it in the Microsoft 365 admin center, and the isolated preview agent becomes available to your test group. `AGENT_SCOPE` in the env file controls the provision scope (`shared` for sideload-style testing).
 
-After a successful provision + publish you'll see the agent as **`Sales Agent Preview(<ENV>)`** in the [Developer Portal](https://dev.teams.microsoft.com/apps) and be able to open it in [Microsoft 365 Copilot](https://m365.cloud.microsoft/chat/). The provision output writes `TEAMS_APP_ID`, `M365_TITLE_ID`, `M365_APP_ID`, and a `SHARE_LINK` into `env/.env.<env>.user`.
+After a successful provision + publish you'll see the agent as **`Sales Agent Preview(<ENV>)`** in the [Developer Portal](https://dev.teams.microsoft.com/apps) and be able to open it in [Microsoft 365 Copilot](https://m365.cloud.microsoft/chat/). Provision writes `TEAMS_APP_ID`, `M365_TITLE_ID`, `M365_APP_ID`, and `SHARE_LINK` back into **`env/.env.<env>`** (only `SECRET_*` variables go to `env/.env.<env>.user`).
+
+> 🔁 **Commit `env/.env.<env>` right after the first successful provision of a stage.** `TEAMS_APP_ID` is the agent's identity — if it is blank on the next run, ATK creates a *second* agent instead of updating the first. See [Duplicate agents in the tenant after every deploy](#duplicate-agents-in-the-tenant-after-every-deploy).
+
+### 4b. Ship a new version of the same agent
+
+Bump `AGENT_VERSION` in `env/.env.<env>` (for example `1.0.0` → `1.1.0`) and re-run Provision (then Publish). **Leave `TEAMS_APP_ID` exactly as it is** — the version is a property of the app, the app ID is its identity.
+
+```dotenv
+# env/.env.dev
+TEAMS_APP_ID=00000000-0000-0000-0000-000000000000   # never changes for this stage
+AGENT_VERSION=1.1.0                                  # the only thing you bump
+```
 
 ### 5. Promote
 
@@ -209,6 +253,52 @@ A sample dataset lives in `evals/prompts.json`. [Read more](https://learn.micros
 
 ## Troubleshooting
 
+### Duplicate agents in the tenant after every deploy
+
+**Symptom:** Every time you bump the version and re-run Provision/Publish, a *new* `Sales Agent Preview(<ENV>)` entry shows up in the tenant instead of the existing one being updated. Over time the Developer Portal / app catalog fills with near-identical agents.
+
+**Cause:** `TEAMS_APP_ID` was empty (or stale) when `teamsApp/create` ran.
+
+`manifest.json` sets `"id": "${{TEAMS_APP_ID}}"`, so **`TEAMS_APP_ID` is the agent's identity in the tenant**. The `teamsApp/create` action's documented behavior is:
+
+> If the environment variable that stores the Teams app ID is empty or the app ID isn't found from the Teams Developer Portal, then this action creates a new Teams app.
+
+So `teamsApp/create` only *reuses* the agent when `TEAMS_APP_ID` already holds a valid ID for the **currently signed-in tenant**. Anything that returns that variable to blank makes the next provision mint a brand-new app — and the previous one stays behind as a duplicate. The usual culprits:
+
+| Trigger | Why it blanks the ID |
+| --- | --- |
+| **CI/CD pipeline** | A fresh `actions/checkout` gets the committed `env/.env.<env>`. If the ID was never committed, every pipeline run starts from `TEAMS_APP_ID=` and creates a new agent. |
+| **Fresh clone / new machine / another teammate** | Same as above — the write-back from someone else's provision only lived in their working copy. |
+| **`git checkout` / `git stash` / discarding changes** | Provision's write-back to `env/.env.<env>` is an *uncommitted* file change. Reverting the file throws the ID away. |
+| **Regenerating or hand-resetting the env file to "start clean" before a version bump** | Blanks the identity along with everything else. |
+| **Provisioning against a different tenant/account** | The ID is valid but not found in *this* tenant, so a new app is created there. |
+
+Note that bumping the version is not itself the cause — it's just when you notice. The version (`AGENT_VERSION`) is a property of the app; `TEAMS_APP_ID` is *which* app.
+
+**Fix:**
+
+1. Pick the one agent you want to keep for the stage. Get its **App ID** from the [Developer Portal](https://dev.teams.microsoft.com/apps) (or from the working copy where provision last succeeded).
+2. Write it into the committed env file and **commit it**:
+   ```dotenv
+   # env/.env.dev
+   TEAMS_APP_ID=00000000-0000-0000-0000-000000000000
+   AGENT_VERSION=1.0.0
+   ```
+   Do the same for `env/.env.uat` and `env/.env.sit`, each with **its own distinct ID** — one identity per stage.
+3. Let the first successful provision of a stage also write back `M365_TITLE_ID`, `M365_APP_ID`, and `SHARE_LINK` into the same file, and commit those too.
+4. To ship a change from then on: bump **`AGENT_VERSION` only**, re-run Provision → Publish. The existing agent is updated in place.
+5. Delete the leftover duplicates from the Developer Portal / Microsoft 365 admin center.
+
+**Rules to keep it fixed:**
+
+- `env/.env.<env>` is tracked in git **on purpose**. Commit the write-back; never `git checkout` it away.
+- Only `SECRET_*` variables belong in the gitignored `env/.env.<env>.user`. `TEAMS_APP_ID` is not a secret.
+- In CI, either commit the IDs or inject `TEAMS_APP_ID` per stage from a pipeline variable — never let a pipeline run with it blank.
+- Every stage keeps its **own** `TEAMS_APP_ID`. Reusing one ID across dev/uat/sit makes the stages overwrite each other instead of coexisting.
+- Any new env file you add (`.env.preprod`, and the auto-generated `.env.local`) must define `TEAMS_APP_ID` and `AGENT_VERSION`, or packaging fails with `manifest.MissingEnvironmentVariablesError`.
+
+> Related: `provision` runs `copilotAgent/publish` with `scope: ${{AGENT_SCOPE}}` (`shared`) and `publish` runs it again with `scope: tenant`, writing to `M365_TITLE_ID` and `M365_PUBLISHED_TITLE_ID` respectively. That is expected — both point at the *same* Teams app as long as `TEAMS_APP_ID` is stable. If they diverge, you provisioned and published with different app IDs.
+
 ### `TeamsAppNotExists` — "App with ID … does not exist in Developer Portal" when publishing
 
 ```
@@ -222,7 +312,7 @@ TeamsAppNotExists: App with ID <guid> does not exist in Developer Portal.
 1. In the ATK panel, confirm the **correct M365 account/tenant is active** (this template may have several accounts signed in — provision and publish must use the same one).
 2. Run **LIFECYCLE → Provision** for the target env (e.g. `sit`). This creates the app and writes a fresh `TEAMS_APP_ID` to `env/.env.<env>`.
 3. Run **LIFECYCLE → Publish to Organization** for the same env.
-4. If `env/.env.<env>` holds a **stale** `TEAMS_APP_ID` (deleted app or wrong tenant), set it back to `TEAMS_APP_ID=` and re-run Provision so a new app is created.
+4. If `env/.env.<env>` holds a **stale** `TEAMS_APP_ID` (deleted app or wrong tenant), set it back to `TEAMS_APP_ID=` and re-run Provision so a new app is created — then **commit the new ID**. ⚠️ Do this only when the app is genuinely gone; blanking a *valid* ID is what causes [duplicate agents](#duplicate-agents-in-the-tenant-after-every-deploy).
 
 ### Warning: "Short name contains Beta environment keywords (STAG/Staging/Preview)"
 
@@ -234,7 +324,7 @@ A `${{…}}` token in `manifest.json` / `declarativeAgent.json` (or a tool manif
 
 ### Wrong tenant / agent not showing up
 
-Provision, publish, and the browser session where you open Copilot must all be the **same tenant**. Switch the active account in the ATK **ACCOUNTS** panel, then re-provision. Verify the app in the [Developer Portal](https://dev.teams.microsoft.com/apps) and open it via the `SHARE_LINK` from `env/.env.<env>.user`.
+Provision, publish, and the browser session where you open Copilot must all be the **same tenant**. Switch the active account in the ATK **ACCOUNTS** panel, then re-provision. Verify the app in the [Developer Portal](https://dev.teams.microsoft.com/apps) and open it via the `SHARE_LINK` from `env/.env.<env>`.
 
 ---
 
